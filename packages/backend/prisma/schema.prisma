@@ -1,0 +1,293 @@
+// ========================================
+// Memphis Database Schema
+// Twitter/X Scraper with NLP & DQM
+// ========================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// RAW TWEETS
+// Tweets scraped from Twitter/X before DQM
+// ========================================
+
+model RawTweet {
+  id                String   @id @default(cuid())
+  tweetId           String   @unique // Twitter/X tweet ID
+  text              String   @db.Text
+  authorId          String
+  authorUsername    String
+  authorDisplayName String   @db.Text
+  authorFollowers   Int      @default(0)
+  authorVerified    Boolean  @default(false)
+  scrapedAt         DateTime @default(now())
+
+  // Engagement metrics
+  retweets Int     @default(0)
+  likes    Int     @default(0)
+  replies  Int     @default(0)
+  views    BigInt? @default(0)
+  quotes   Int     @default(0)
+
+  // Media and metadata
+  imageUrl String?
+  language String?
+  source   String?
+
+  // Arrays (stored as JSONB in PostgreSQL)
+  mediaUrls Json?
+  mentions  String[]
+  hashtags  String[]
+  urls      String[]
+
+  // Tweet type
+  isReply   Boolean @default(false)
+  isRetweet Boolean @default(false)
+  isQuoted  Boolean @default(false)
+
+  // References
+  inReplyToTweetId String?
+  quotedTweetId    String?
+  retweetedTweetId String?
+
+  // Backup
+  rawJson Json?
+
+  // Search context
+  searchKeyword String?
+
+  // Relations
+  dqmChecks       RawDqmCheck[]
+  processedTweets ProcessedTweet[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tweetId])
+  @@index([scrapedAt])
+  @@index([authorUsername])
+  @@index([createdAt])
+  @@map("raw_tweets")
+}
+
+// ========================================
+// RAW DQM CHECKS
+// Data Quality Management check results
+// ========================================
+
+model RawDqmCheck {
+  id         String   @id @default(cuid())
+  rawTweetId String
+  rawTweet   RawTweet @relation(fields: [rawTweetId], references: [id], onDelete: Cascade)
+
+  // Validation results
+  isDuplicate     Boolean @default(false)
+  isLanguageValid Boolean @default(true)
+  isMinLength     Boolean @default(true)
+  isMaxLength     Boolean @default(true)
+  isBot           Boolean @default(false)
+  hasUrl          Boolean @default(true)
+  hasMention      Boolean @default(true)
+
+  // Quality scoring
+  qualityScore Float   @default(0.0)
+  passed       Boolean @default(false)
+
+  // Timestamps
+  checkedAt DateTime @default(now())
+
+  @@index([rawTweetId])
+  @@index([passed])
+  @@index([checkedAt])
+  @@map("raw_dqm_checks")
+}
+
+// ========================================
+// PROCESSED TWEETS
+// Tweets that passed DQM (ready for NLP)
+// ========================================
+
+model ProcessedTweet {
+  id         String   @id @default(cuid())
+  rawTweetId String   @unique
+  rawTweet   RawTweet @relation(fields: [rawTweetId], references: [id], onDelete: Cascade)
+
+  // Cleaned content
+  cleanedText    String @db.Text
+  normalizedText String @db.Text
+
+  // Sentiment Analysis (PRIORITY!)
+  sentimentLabel   SentimentLabel @default(NEUTRAL)
+  sentimentScore   Float          @default(0.0)
+  sentimentDetails Json?
+
+  // NLP Analysis
+  keywords    Json?
+  stemmedText String? @db.Text
+  tokens      Json?
+  posTags     Json?
+
+  // Topic/Category
+  topics   Json?
+  category String?
+
+  // Nutrition-specific
+  hasNutritionTerms Boolean @default(false)
+  hasPolicyTerms    Boolean @default(false)
+  urgency           String? // high, medium, low
+
+  // DQM tracking
+  dqmRulesApplied     String[]
+  dqmCleaningNotes    Json?
+  dqmValidationPassed Boolean  @default(true)
+
+  // Metadata
+  processedAt       DateTime @default(now())
+  processingVersion String   @default("1.0")
+
+  @@index([rawTweetId])
+  @@index([sentimentLabel])
+  @@index([category])
+  @@index([processedAt])
+  @@map("processed_tweets")
+}
+
+// ========================================
+// DAILY AGGREGATION
+// Daily statistics for analytics
+// ========================================
+
+model DailyAggregation {
+  id   String   @id @default(cuid())
+  date DateTime @unique
+
+  // Tweet counts
+  tweetsScraped   Int @default(0)
+  tweetsPassedDqm Int @default(0)
+  tweetsAnalyzed  Int @default(0)
+
+  // Sentiment breakdown
+  sentimentPositive Int @default(0)
+  sentimentNegative Int @default(0)
+  sentimentNeutral  Int @default(0)
+  sentimentMixed    Int @default(0)
+
+  // Aggregates
+  avgSentimentScore Float @default(0.0)
+
+  // Top items
+  topKeywords Json?
+  topTopics   Json?
+  topHashtags Json?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@map("daily_aggregations")
+}
+
+// ========================================
+// SCRAPER RUNS
+// Scraper execution logs
+// ========================================
+
+model ScraperRun {
+  id        String    @id @default(cuid())
+  startTime DateTime
+  endTime   DateTime?
+  status    RunStatus @default(RUNNING)
+
+  // Results
+  tweetsFound     Int @default(0)
+  tweetsScraped   Int @default(0)
+  tweetsPassedDqm Int @default(0)
+
+  // Configuration
+  keywords            String[]
+  maxTweetsPerKeyword Int?
+
+  // Error tracking
+  errorMessage String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startTime])
+  @@index([status])
+  @@map("scraper_runs")
+}
+
+// ========================================
+// DQM RULES
+// Data Quality Management rules configuration
+// ========================================
+
+model DqmRule {
+  id          String  @id @default(cuid())
+  ruleName    String  @unique
+  ruleType    String // validation, cleaning, enrichment
+  ruleConfig  Json
+  isActive    Boolean @default(true)
+  priority    Int     @default(0)
+  description String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ruleType])
+  @@index([isActive])
+  @@map("dqm_rules")
+}
+
+// ========================================
+// SEARCH KEYWORDS
+// Keywords configuration for scraping
+// ========================================
+
+model SearchKeyword {
+  id       String  @id @default(cuid())
+  keyword  String  @unique
+  category String?
+  priority Int     @default(0)
+  isActive Boolean @default(true)
+
+  // Statistics
+  lastScrapedAt DateTime?
+  totalResults  Int       @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([priority])
+  @@map("search_keywords")
+}
+
+// ========================================
+// ENUMS
+// ========================================
+
+enum SentimentLabel {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+  MIXED
+}
+
+enum RunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
