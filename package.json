@@ -1,0 +1,28 @@
+{
+  "name": "memphis-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter './packages/**' dev",
+    "build": "pnpm --parallel --filter './packages/**' build",
+    "lint": "pnpm --parallel --filter './packages/**' lint",
+    "test": "pnpm --parallel --filter './packages/**' test",
+    "backend:dev": "pnpm --filter backend dev",
+    "frontend:dev": "pnpm --filter frontend dev",
+    "backend:start": "pnpm --filter backend start",
+    "backend:build": "pnpm --filter backend build",
+    "frontend:build": "pnpm --filter frontend build",
+    "shared:build": "pnpm --filter shared build",
+    "scrape": "pnpm --filter backend scrape",
+    "scrape:scheduled": "pnpm --filter backend scheduled",
+    "prisma:generate": "pnpm --filter backend prisma:generate",
+    "prisma:migrate": "pnpm --filter backend prisma:migrate",
+    "prisma:studio": "pnpm --filter backend prisma:studio"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3",
+    "prettier": "^3.1.0",
+    "eslint": "^8.55.0"
+  }
+}
