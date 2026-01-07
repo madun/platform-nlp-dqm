@@ -21,13 +21,12 @@ export class TwitterScraper {
   private readonly executablePath: string;
   private requestCount = 0;
   private lastRequestTime = 0;
-  private static readonly REQUEST_DELAY_MS = 5000; // 5 seconds between requests
+  private static readonly REQUEST_DELAY_MS = 8000; // 8 seconds between requests
   private static readonly MAX_RETRIES = 3;
-  private static readonly RATE_LIMIT_DELAY = 60000; // 1 minute on rate limit
+  private static readonly RATE_LIMIT_DELAY = 60000 * 2; // 2 minutes on rate limit
 
   constructor(config: ScraperConfig) {
     this.config = config;
-    // Use system Chromium
     this.executablePath = "/Applications/Chromium.app/Contents/MacOS/Chromium";
   }
 
@@ -38,7 +37,6 @@ export class TwitterScraper {
     try {
       logger.info("Initializing Puppeteer browser...");
 
-      // Verify the executable exists
       const fs = await import("fs");
       if (!fs.existsSync(this.executablePath)) {
         throw new Error(
@@ -51,7 +49,6 @@ export class TwitterScraper {
       const headless = process.env.HEADLESS !== "false";
       logger.info(`Headless mode: ${headless}`);
 
-      // Launch with timeout to prevent hanging
       const launchPromise = puppeteer.launch({
         headless: headless ? "new" : false,
         executablePath: this.executablePath,
@@ -69,11 +66,9 @@ export class TwitterScraper {
           "--disable-renderer-backgrounding",
         ],
         defaultViewport: null,
-        // Add timeout to prevent hanging
-        timeout: 60000, // 60 seconds
+        timeout: 60000,
       });
 
-      // Wait for browser launch with explicit timeout
       this.browser = await Promise.race([
         launchPromise,
         new Promise<never>((_, reject) =>
@@ -83,27 +78,21 @@ export class TwitterScraper {
 
       logger.info("Browser launched successfully");
 
-      // Create new page with error handling
       this.page = await this.browser.newPage();
       logger.info("New page created");
 
-      // Set user agent
       await this.page.setUserAgent(
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       );
-      logger.info("User agent set");
 
-      // Set viewport
       await this.page.setViewport({ width: 1280, height: 720 });
       logger.info("Viewport set to 1280x720");
 
-      // Block unnecessary resources for speed and memory
       await this.page.setRequestInterception(true);
       this.page.on("request", (req) => {
         const resourceType = req.resourceType();
         const url = req.url();
 
-        // Block heavy resources to save memory
         if (
           ["image", "stylesheet", "font", "media", "websocket"].includes(
             resourceType,
@@ -120,15 +109,12 @@ export class TwitterScraper {
       });
       logger.info("Request interception configured");
 
-      // Enable page cache
       await this.page.setCacheEnabled(true);
-      logger.info("Browser initialized successfully");
 
-      // Login if credentials are provided
       await this.loginIfRequired();
+      logger.info("Browser initialized successfully");
     } catch (error) {
       logger.error("Failed to initialize browser:", error);
-      // Cleanup if initialization failed
       await this.cleanup();
       throw error;
     }
@@ -150,22 +136,18 @@ export class TwitterScraper {
     logger.info("Twitter credentials found, attempting to login...");
 
     try {
-      // Navigate to Twitter login page
-      logger.info("Navigating to Twitter login page...");
-      await this.page!.goto("https://x.com/i/flow/login", {
+      await this.page!.goto("https://twitter.com/i/flow/login", {
         waitUntil: "networkidle2",
         timeout: 30000,
       });
 
       await this.randomDelay(2000, 3000);
 
-      // Check if already logged in
       if (await this.isLoggedIn()) {
         logger.info("Already logged in to Twitter");
         return;
       }
 
-      // Perform login
       await this.performLogin(username, password, email);
       logger.info("Successfully logged in to Twitter");
     } catch (error) {
@@ -179,19 +161,11 @@ export class TwitterScraper {
    */
   private async isLoggedIn(): Promise<boolean> {
     try {
-      // Check for logout button or user profile which indicates logged in state
       const hasLogoutButton = await this.page!.$(
-        '[data-testid="AccountSwitcher_Logout_Button"]',
-      );
-      const hasProfile = await this.page!.$(
         '[data-testid="SideNav_AccountSwitcher_Button"]',
       );
-
-      if (hasLogoutButton || hasProfile) {
-        return true;
-      }
-
-      return false;
+      const hasProfile = await this.page!.$('[role="banner"]');
+      return !!(hasLogoutButton || hasProfile);
     } catch {
       return false;
     }
@@ -207,72 +181,122 @@ export class TwitterScraper {
   ): Promise<void> {
     const page = this.page!;
 
-    // Wait for username input
     logger.info("Entering username...");
     await page.waitForSelector('input[autocomplete="username"]', {
       timeout: 10000,
     });
-
     await page.type('input[autocomplete="username"]', username, {
       delay: 100,
     });
 
     await this.randomDelay(1000, 2000);
 
-    // Click next button
-    const nextButton = await page.$x(
-      '//button[@role="button"]//span[text()="Next"]',
-    );
-    if (nextButton.length > 0) {
-      await nextButton[0].click();
-    } else {
-      // Try alternative selector
-      await page.evaluate(() => {
-        const buttons = Array.from(
-          document.querySelectorAll('button[role="button"] span'),
-        );
-        const nextBtn = buttons.find((b) => b.textContent === "Next");
-        if (nextBtn) (nextBtn as HTMLElement).click();
-      });
+    logger.info("Clicking Next button after username...");
+
+    let nextButtonClicked = false;
+
+    try {
+      const nextButton = await page.$x(
+        '//button[@role="button"]//span[text()="Next"]',
+      );
+
+      if (nextButton && nextButton.length > 0) {
+        await nextButton[0].click();
+        nextButtonClicked = true;
+        logger.debug("Clicked Next button using XPath");
+      }
+    } catch (e) {
+      logger.debug("XPath selector failed for Next button:", e);
     }
 
-    await this.randomDelay(2000, 3000);
-
-    // Check if email is requested
-    try {
-      const emailInput = await page.$('input[autocomplete="email"]');
-      if (emailInput && email) {
-        logger.info("Email requested, entering email...");
-        await page.waitForSelector('input[autocomplete="email"]', {
-          timeout: 5000,
+    if (!nextButtonClicked) {
+      try {
+        await page.evaluate(() => {
+          const buttons = Array.from(
+            document.querySelectorAll('div[role="button"] span'),
+          );
+          const nextBtn = buttons.find((b) => b.textContent === "Next");
+          if (nextBtn) (nextBtn as HTMLElement).click();
         });
-        await page.type('input[autocomplete="email"]', email, { delay: 100 });
-        await this.randomDelay(1000, 2000);
+        nextButtonClicked = true;
+        logger.debug("Clicked Next button via evaluate");
+      } catch (e) {
+        logger.error("Failed to click Next button via evaluate:", e);
+      }
+    }
 
-        // Click next button again
+    if (!nextButtonClicked) {
+      throw new Error(
+        "Could not find or click Next button after entering username",
+      );
+    }
+
+    logger.info("Waiting for page transition after clicking Next...");
+    await this.randomDelay(1000, 1500);
+
+    try {
+      await page.waitForSelector(
+        'input[autocomplete="email"], input[name="password"]',
+        { timeout: 10000 },
+      );
+    } catch (e) {
+      logger.warn("Email or password input not found after Next button");
+    }
+
+    const emailInput = await page.$('input[autocomplete="email"]');
+    if (emailInput && email) {
+      logger.info("Email requested, entering email...");
+      await page.type('input[autocomplete="email"]', email, { delay: 100 });
+      await this.randomDelay(1000, 2000);
+
+      logger.info("Clicking Next button after email...");
+
+      let emailNextButtonClicked = false;
+
+      try {
         const emailNextButton = await page.$x(
           '//button[@role="button"]//span[text()="Next"]',
         );
-        if (emailNextButton.length > 0) {
+
+        if (emailNextButton && emailNextButton.length > 0) {
           await emailNextButton[0].click();
-        } else {
+          emailNextButtonClicked = true;
+          logger.debug("Clicked email Next button using XPath");
+        }
+      } catch (e) {
+        logger.debug("XPath selector failed for email Next button:", e);
+      }
+
+      if (!emailNextButtonClicked) {
+        try {
           await page.evaluate(() => {
             const buttons = Array.from(
-              document.querySelectorAll('button[role="button"] span'),
+              document.querySelectorAll('div[role="button"] span'),
             );
             const nextBtn = buttons.find((b) => b.textContent === "Next");
             if (nextBtn) (nextBtn as HTMLElement).click();
           });
+          emailNextButtonClicked = true;
+          logger.debug("Clicked email Next button via evaluate");
+        } catch (e) {
+          logger.error("Failed to click email Next button via evaluate:", e);
         }
       }
-    } catch {
-      // Email field not required
-      logger.debug("Email field not required");
+
+      if (!emailNextButtonClicked) {
+        throw new Error(
+          "Could not find or click Next button after entering email",
+        );
+      }
+
+      logger.info("Waiting for password input after email...");
+      await page.waitForSelector('input[name="password"]', { timeout: 10000 });
+    } else {
+      logger.debug("Email field not required, proceeding to password");
     }
 
-    await this.randomDelay(2000, 3000);
+    await this.randomDelay(1000, 1500);
 
-    // Wait for password input
     logger.info("Entering password...");
     await page.waitForSelector('input[name="password"]', { timeout: 10000 });
 
@@ -280,29 +304,48 @@ export class TwitterScraper {
 
     await this.randomDelay(1000, 2000);
 
-    // Click login button
-    const loginButton = await page.$x(
-      '//button[@role="button"]//span[text()="Log in"]',
-    );
-    if (loginButton.length > 0) {
-      await loginButton[0].click();
-    } else {
-      await page.evaluate(() => {
-        const buttons = Array.from(
-          document.querySelectorAll('button[role="button"] span'),
-        );
-        const loginBtn = buttons.find((b) => b.textContent === "Log in");
-        if (loginBtn) (loginBtn as HTMLElement).click();
-      });
+    logger.info("Clicking Log in button...");
+
+    let loginButtonClicked = false;
+
+    try {
+      const loginButton = await page.$x(
+        '//button[@role="button"]//span[text()="Log in"]',
+      );
+
+      if (loginButton && loginButton.length > 0) {
+        await loginButton[0].click();
+        loginButtonClicked = true;
+        logger.debug("Clicked Log in button using XPath");
+      }
+    } catch (e) {
+      logger.debug("XPath selector failed for Log in button:", e);
     }
 
-    // Wait for login to complete
+    if (!loginButtonClicked) {
+      try {
+        await page.evaluate(() => {
+          const buttons = Array.from(
+            document.querySelectorAll('div[role="button"] span'),
+          );
+          const loginBtn = buttons.find((b) => b.textContent === "Log in");
+          if (loginBtn) (loginBtn as HTMLElement).click();
+        });
+        loginButtonClicked = true;
+        logger.debug("Clicked Log in button via evaluate");
+      } catch (e) {
+        logger.error("Failed to click Log in button via evaluate:", e);
+      }
+    }
+
+    if (!loginButtonClicked) {
+      throw new Error("Could not find or click Log in button");
+    }
+
     logger.info("Waiting for login to complete...");
     await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 });
-
     await this.randomDelay(2000, 3000);
 
-    // Verify login was successful
     if (!(await this.isLoggedIn())) {
       throw new Error("Login verification failed");
     }
@@ -319,24 +362,20 @@ export class TwitterScraper {
       throw new Error("Scraper not initialized. Call initialize() first.");
     }
 
-    // Rate limiting: wait between requests
     await this.rateLimit();
 
-    // Retry logic with exponential backoff
     let retries = 0;
     let lastError: Error | null = null;
 
     while (retries < TwitterScraper.MAX_RETRIES) {
       try {
         const tweets = await this.searchTweetsInternal(keyword, maxTweets);
-
-        // Reset retry counter on success
         this.requestCount = 0;
+        console.log(`Scraped ${tweets.length} tweets for keyword "${keyword}"`);
         return tweets;
       } catch (error) {
         lastError = error as Error;
 
-        // Check if it's a rate limit error
         if (this.isRateLimitError(error)) {
           retries++;
           const delay = Math.pow(2, retries) * TwitterScraper.RATE_LIMIT_DELAY;
@@ -347,16 +386,18 @@ export class TwitterScraper {
 
           await this.randomDelay(delay, delay + 10000);
 
-          // Try to refresh page to clear rate limit
-          await this.page!.goto("https://twitter.com/home", {
-            waitUntil: "networkidle2",
-            timeout: 30000,
-          });
+          try {
+            await this.page!.goto("https://twitter.com/home", {
+              waitUntil: "networkidle2",
+              timeout: 30000,
+            });
+          } catch {
+            // Ignore navigation errors
+          }
 
           continue;
         }
 
-        // Not a rate limit error, rethrow immediately
         throw error;
       }
     }
@@ -379,15 +420,12 @@ export class TwitterScraper {
     logger.info(`Searching for tweets with keyword: "${keyword}"`);
     logger.info(`Search URL: ${searchUrl}`);
 
-    // Navigate to search page
-    logger.info("Navigating to Twitter search page...");
     await this.page!.goto(searchUrl, {
       waitUntil: "networkidle2",
       timeout: 30000,
     });
 
-    // Check if we were redirected to login page
-    const currentUrl = this.page.url();
+    const currentUrl = this.page!.url();
     if (currentUrl.includes("login") || currentUrl.includes("i/flow")) {
       logger.info("Redirected to login page, logging in...");
 
@@ -404,9 +442,8 @@ export class TwitterScraper {
       await this.performLogin(username, password, email);
       await this.randomDelay(2000, 3000);
 
-      // Navigate to search page again after login
       logger.info("Retrying navigation to search page after login...");
-      await this.page.goto(searchUrl, {
+      await this.page!.goto(searchUrl, {
         waitUntil: "networkidle2",
         timeout: 30000,
       });
@@ -414,10 +451,8 @@ export class TwitterScraper {
 
     logger.info("Page loaded successfully");
 
-    // Wait for tweets to load
-    logger.info("Waiting for tweet elements...");
     try {
-      await this.page.waitForSelector('article[data-testid="tweet"]', {
+      await this.page!.waitForSelector('article[data-testid="tweet"]', {
         timeout: 15000,
       });
       logger.info("Tweet elements found");
@@ -426,51 +461,47 @@ export class TwitterScraper {
       return [];
     }
 
-    let scrollAttempts = 0;
-    const maxScrollAttempts = 10;
-    let previousHeight = 0;
-
-    // Check if rate limited
     if (await this.isCurrentlyRateLimited()) {
       logger.warn("Rate limit detected from page content");
       throw new Error("Rate limit detected");
     }
 
-    // Scroll and collect tweets
+    let scrollAttempts = 0;
+    const maxScrollAttempts = 2;
+    let previousHeight = 0;
+
     logger.info(`Starting to scroll and collect tweets (max: ${maxTweets})`);
+
     while (tweets.length < maxTweets && scrollAttempts < maxScrollAttempts) {
       logger.debug(
         `Current tweets: ${tweets.length}, Scroll attempt: ${scrollAttempts}/${maxScrollAttempts}`,
       );
 
-      // Extract tweets from current view
       const newTweets = await this.extractTweetsFromPage(keyword);
 
-      // Add unique tweets
+      logger.info(`Scraped ${newTweets.length} tweets`);
+
       for (const tweet of newTweets) {
         if (!tweets.find((t) => t.id === tweet.id)) {
           tweets.push(tweet);
           logger.debug(`Found new tweet: ${tweet.id}`);
-          if (tweets.length >= maxTweets) break;
         }
       }
 
       if (tweets.length >= maxTweets) break;
 
-      // Check for rate limit during scrolling
       if (await this.isCurrentlyRateLimited()) {
         logger.warn("Rate limit detected during scrolling");
         throw new Error("Rate limit detected during scrolling");
       }
 
-      // Scroll down with longer delays
-      previousHeight = await this.page.evaluate("document.body.scrollHeight");
-      await this.page.evaluate(
+      previousHeight = await this.page!.evaluate("document.body.scrollHeight");
+      await this.page!.evaluate(
         "window.scrollTo(0, document.body.scrollHeight)",
       );
-      await this.randomDelay(3000, 5000); // Increased from 1500-2500
+      await this.randomDelay(3000, 5000);
 
-      const newHeight = await this.page.evaluate("document.body.scrollHeight");
+      const newHeight = await this.page!.evaluate("document.body.scrollHeight");
       if (newHeight === previousHeight) {
         scrollAttempts++;
         logger.debug(`No new content, scroll attempt ${scrollAttempts}`);
@@ -481,6 +512,449 @@ export class TwitterScraper {
 
     logger.info(`Found ${tweets.length} tweets for keyword: "${keyword}"`);
     return tweets.slice(0, maxTweets);
+  }
+
+  /**
+   * Extract tweets from current page
+   */
+  private async extractTweetsFromPage(keyword: string): Promise<Tweet[]> {
+    if (!this.page) return [];
+
+    try {
+      const tweetElements = await this.page.$$('article[data-testid="tweet"]');
+      const tweets: Tweet[] = [];
+
+      for (let index = 0; index < tweetElements.length; index++) {
+        const element = tweetElements[index];
+        try {
+          const tweetId = await this.extractTweetIdFromElement(element);
+
+          if (!tweetId) {
+            tweets.push({
+              id: "",
+              text: "",
+              authorId: "",
+              authorUsername: "",
+              authorDisplayName: "",
+              authorFollowers: 0,
+              authorVerified: false,
+              createdAt: "",
+              scrapedAt: new Date().toISOString(),
+              retweets: 0,
+              likes: 0,
+              replies: 0,
+              language: "id",
+              source: "twitter",
+              hashtags: [],
+              mentions: [],
+              searchKeyword: keyword,
+              elementIndex: index,
+            });
+            continue;
+          }
+
+          await this.clickShowMoreButtons(element);
+
+          const text = await this.extractText(element);
+          if (!text) continue;
+
+          const { username, displayName, isVerified } =
+            await this.extractAuthorInfo(element);
+          const { retweets, likes, replies } =
+            await this.extractMetrics(element);
+          const hashtags = await this.extractHashtags(element);
+          const mentions = await this.extractMentions(element);
+
+          const datetime = await this.extractTime(element);
+
+          tweets.push({
+            id: tweetId,
+            text,
+            authorId: username,
+            authorUsername: username,
+            authorDisplayName: displayName,
+            authorFollowers: 0,
+            authorVerified: isVerified,
+            createdAt: datetime,
+            scrapedAt: new Date().toISOString(),
+            retweets,
+            likes,
+            replies,
+            language: "id",
+            source: "twitter",
+            hashtags,
+            mentions,
+          });
+
+          (tweets as any).searchKeyword = keyword;
+        } catch (error) {
+          logger.error(`Error extracting tweet ${index}:`, error);
+        }
+      }
+
+      return tweets;
+    } catch (error) {
+      logger.error("Error in extractTweetsFromPage:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Extract tweet ID from element
+   */
+  private async extractTweetIdFromElement(element: any): Promise<string> {
+    // Method 1: Try to find the timestamp/time element which typically contains the tweet permalink
+    const timeElement = await element.$("time");
+    if (timeElement) {
+      const parentLink = await element.evaluate((el: HTMLElement) => {
+        const closestLink = (el as any).closest('a[href*="/status/"]');
+        return closestLink ? closestLink.getAttribute("href") || "" : "";
+      }, timeElement);
+      const timeMatch = parentLink.match(/status\/(\d+)/);
+      if (timeMatch) return timeMatch[1];
+    }
+
+    // Method 2: Try to find any direct link element with status in href
+    const linkElement = await element.$('a[href*="/status/"]');
+    if (linkElement) {
+      const href = await element.evaluate(
+        (el: HTMLElement) => el.getAttribute("href") || "",
+        linkElement,
+      );
+      const match = href.match(/status\/(\d+)/);
+      if (match) return match[1];
+    }
+
+    // Method 3: Try to extract from data-testid or other data attributes
+    const tweetIdFromData = await element.evaluate((el: HTMLElement) => {
+      // Check for data-testid containing the ID
+      const allElements = el.querySelectorAll("[data-testid], [data-tweet-id]");
+      for (const elem of allElements) {
+        const testId = elem.getAttribute("data-testid");
+        if (testId && testId.includes("tweet")) {
+          const idMatch = testId.match(/\d+/);
+          if (idMatch && idMatch[0].length >= 10) return idMatch[0];
+        }
+        const tweetId = elem.getAttribute("data-tweet-id");
+        if (tweetId) return tweetId;
+      }
+      return "";
+    });
+    if (tweetIdFromData) return tweetIdFromData;
+
+    // Method 4: Try to extract from aria-label or other metadata
+    const tweetIdFromAria = await element.evaluate((el: HTMLElement) => {
+      const elements = el.querySelectorAll(
+        "[aria-label], [data-aria-label-part]",
+      );
+      for (const elem of elements) {
+        const ariaLabel = elem.getAttribute("aria-label") || "";
+        const dataAriaPart = elem.getAttribute("data-aria-label-part") || "";
+        const combined = `${ariaLabel} ${dataAriaPart}`;
+        const idMatch = combined.match(/(\d{10,})/);
+        if (idMatch) return idMatch[1];
+      }
+      return "";
+    });
+    if (tweetIdFromAria) return tweetIdFromAria;
+
+    // Method 5: Try to extract from the element's internal structure or React props
+    const tweetIdFromProps = await element.evaluate((el: HTMLElement) => {
+      // Check if element has any properties or internal state with the ID
+      const allLinks = el.querySelectorAll("a");
+      for (const link of allLinks) {
+        const href = link.getAttribute("href") || "";
+        if (href.includes("/status/")) {
+          const match = href.match(/status\/(\d+)/);
+          if (match) return match[1];
+        }
+      }
+
+      // Try to find ID in any text content that looks like a tweet ID (10+ digits)
+      const textContent = el.textContent || "";
+      const idMatch = textContent.match(/\b(\d{15,19})\b/); // Tweet IDs are typically 15-19 digits
+      if (idMatch) return idMatch[1];
+
+      return "";
+    });
+    if (tweetIdFromProps) return tweetIdFromProps;
+
+    return "";
+  }
+
+  /**
+   * Click "Show more" buttons
+   */
+  private async clickShowMoreButtons(element: any): Promise<void> {
+    const showMoreButtons = await element.$$(
+      '[data-testid="tweet-text-show-more-link"]',
+    );
+
+    if (showMoreButtons.length > 0) {
+      logger.debug(
+        `Found ${showMoreButtons.length} "Show more" button(s) for tweet`,
+      );
+      for (const button of showMoreButtons) {
+        await button.click();
+      }
+      await this.randomDelay(500, 800);
+    }
+  }
+
+  /**
+   * Extract tweet text
+   */
+  private async extractText(element: any): Promise<string> {
+    const textElement = await element.$('[data-testid="tweetText"]');
+    if (!textElement) return "";
+
+    const text = await element.evaluate(
+      (el: HTMLElement) => el.textContent?.trim() || "",
+      textElement,
+    );
+    return text;
+  }
+
+  /**
+   * Extract author information
+   */
+  private async extractAuthorInfo(
+    element: any,
+  ): Promise<{ username: string; displayName: string; isVerified: boolean }> {
+    let username = "";
+    let displayName = "";
+    let isVerified = false;
+
+    const authorNameElement = await element.$('[data-testid="User-Name"]');
+    if (authorNameElement) {
+      const userLink = await authorNameElement.$('[role="link"]');
+      if (userLink) {
+        const href = await userLink.evaluate(
+          (el: HTMLElement) => el.getAttribute("href") || "",
+        );
+        if (href.startsWith("/")) {
+          const parts = href.split("/").filter((p) => p);
+          logger.info(`Extracting author info from ${href}`);
+          logger.info(`parts ${JSON.stringify(parts)}`);
+          if (parts.length > 0) {
+            (username as any) = parts[0];
+            (displayName as any) = await authorNameElement.evaluate(
+              (el: HTMLElement) => {
+                const span = el.querySelector("span");
+                return span ? span.textContent?.trim() || "" : "";
+              },
+            );
+          }
+        }
+      }
+
+      // const verifiedBadge = await element.$('[data-testid="icon-verified"]');
+      // (isVerified as any) = verifiedBadge !== null;
+    }
+
+    return {
+      username: username || "",
+      displayName: displayName || "",
+      isVerified,
+    };
+  }
+
+  /**
+   * Extract metrics (retweets, likes, replies)
+   */
+  private async extractMetrics(
+    element: any,
+  ): Promise<{ retweets: number; likes: number; replies: number }> {
+    const retweets = await this.extractMetricValue(element, "retweet");
+    const likes = await this.extractMetricValue(element, "like");
+    const replies = await this.extractMetricValue(element, "reply");
+
+    return { retweets, likes, replies };
+  }
+
+  /**
+   * Extract single metric value
+   */
+  private async extractMetricValue(
+    element: any,
+    testId: string,
+  ): Promise<number> {
+    const metricElement = await element.$(`[data-testid="${testId}"]`);
+    if (!metricElement) return 0;
+
+    const text = await metricElement.evaluate((el: HTMLElement) => {
+      // Find the span with the actual count value
+      const span = el.querySelector(
+        'span[data-testid="app-text-transition-container"] span',
+      );
+      return span?.textContent?.trim() || el.textContent?.trim() || "0";
+    });
+
+    if (!text || text === "") return 0;
+
+    if (text.includes("K")) {
+      return parseFloat(text.replace("K", "")) * 1000;
+    }
+    if (text.includes("M")) {
+      return parseFloat(text.replace("M", "")) * 1000000;
+    }
+    return parseInt(text.replace(/[^0-9]/g, "")) || 0;
+  }
+
+  /**
+   * Extract hashtags
+   */
+  private async extractHashtags(element: any): Promise<string[]> {
+    const hashtagElements = await element.$$('a[href*="/hashtag/"]');
+    const hashtags: string[] = [];
+
+    for (const h of hashtagElements) {
+      const text = await element.evaluate(
+        (el: HTMLElement) => el.textContent?.replace(/^#/, "") || "",
+        h,
+      );
+      if (text) hashtags.push(text);
+    }
+
+    return hashtags;
+  }
+
+  /**
+   * Extract mentions
+   */
+  private async extractMentions(element: any): Promise<string[]> {
+    const mentionElements = await element.$$('a[href*="/"]');
+    const mentions: string[] = [];
+
+    for (const m of mentionElements) {
+      const text = await element.evaluate(
+        (el: HTMLElement) => el.textContent || "",
+        m,
+      );
+      if (text.startsWith("@")) {
+        mentions.push(text.replace(/^@/, ""));
+      }
+    }
+
+    return mentions;
+  }
+
+  /**
+   * Extract time/datetime
+   */
+  private async extractTime(element: any): Promise<string> {
+    const timeElement = await element.$("time");
+    logger.info(`Extracting time from element ${JSON.stringify(timeElement)}`);
+    if (timeElement) {
+      const datetime = await element.evaluate(
+        (el: HTMLElement) => el.getAttribute("datetime") || "",
+        timeElement,
+      );
+      if (datetime) return datetime;
+    }
+    return new Date().toISOString();
+  }
+
+  /**
+   * Fallback method: Navigate to tweet detail page to extract information
+   */
+  private async extractTweetFromDetailPage(
+    elementIndex: number,
+  ): Promise<Tweet | null> {
+    if (!this.page) return null;
+
+    try {
+      const tweetElements = await this.page.$$('article[data-testid="tweet"]');
+
+      if (elementIndex >= tweetElements.length) {
+        logger.warn(`Element index ${elementIndex} out of bounds`);
+        return null;
+      }
+
+      const tweetElement = tweetElements[elementIndex];
+
+      logger.debug(
+        `Navigating to tweet detail page for element ${elementIndex}...`,
+      );
+
+      await tweetElement.click();
+
+      await this.page.waitForNavigation({
+        waitUntil: "networkidle2",
+        timeout: 15000,
+      });
+
+      const detailUrl = this.page!.url();
+      logger.debug(`Detail page URL: ${detailUrl}`);
+
+      const urlMatch = detailUrl.match(/status\/(\d+)/);
+      const tweetId = urlMatch ? urlMatch[1].split("?")[0] : "";
+
+      if (!tweetId) {
+        logger.warn("Could not extract tweet ID from detail page URL");
+        await this.page.goBack().catch(() => {});
+        await this.page
+          .waitForNavigation({ waitUntil: "networkidle2", timeout: 10000 })
+          .catch(() => {});
+        return null;
+      }
+
+      await this.clickShowMoreButtons(this.page as any);
+
+      const text = await this.extractText(this.page as any);
+      if (!text) return null;
+
+      const { username, displayName, isVerified } =
+        await this.extractAuthorInfo(this.page as any);
+      const { retweets, likes, replies } = await this.extractMetrics(
+        this.page as any,
+      );
+      const hashtags = await this.extractHashtags(this.page as any);
+      const mentions = await this.extractMentions(this.page as any);
+
+      const datetime = await this.extractTime(this.page as any);
+
+      logger.debug(`Successfully extracted tweet ${tweetId} from detail page`);
+
+      await this.page!.goBack();
+      await this.page
+        .waitForNavigation({ waitUntil: "networkidle2", timeout: 10000 })
+        .catch(() => {});
+
+      return {
+        id: tweetId,
+        text,
+        authorId: username,
+        authorUsername: username,
+        authorDisplayName: displayName,
+        authorFollowers: 0,
+        authorVerified: isVerified,
+        createdAt: datetime,
+        scrapedAt: new Date().toISOString(),
+        retweets,
+        likes,
+        replies,
+        language: "id",
+        source: "twitter",
+        hashtags,
+        mentions,
+      };
+    } catch (error) {
+      logger.error("Error extracting tweet from detail page:", error);
+
+      try {
+        if (this.page) {
+          await this.page!.goBack().catch(() => {});
+          await this.page
+            .waitForNavigation({ waitUntil: "networkidle2", timeout: 10000 })
+            .catch(() => {});
+        }
+      } catch {
+        // Ignore errors during recovery
+      }
+
+      return null;
+    }
   }
 
   /**
@@ -521,13 +995,13 @@ export class TwitterScraper {
     if (!this.page) return false;
 
     try {
-      // Check for rate limit messages
       const rateLimitText = await this.page.evaluate(() => {
         const selectors = ["h2", 'div[role="alert"]', "span", "p"];
 
         for (const selector of selectors) {
           const elements = document.querySelectorAll(selector);
-          for (const el of elements) {
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i];
             const text = el.textContent?.toLowerCase() || "";
             if (
               text.includes("rate limit") ||
@@ -549,126 +1023,11 @@ export class TwitterScraper {
   }
 
   /**
-   * Extract tweets from current page
-   */
-  private async extractTweetsFromPage(keyword: string): Promise<Tweet[]> {
-    if (!this.page) return [];
-
-    try {
-      return await this.page.evaluate((searchKeyword) => {
-        const tweetElements = document.querySelectorAll(
-          'article[data-testid="tweet"]',
-        );
-        const tweets: any[] = [];
-
-        tweetElements.forEach((element) => {
-          try {
-            // Extract tweet ID from link
-            const tweetLink = element.querySelector('a[href*="/status/"]');
-            const href = tweetLink?.getAttribute("href") || "";
-            const tweetId = href.split("/status/")?.[1]?.split("?")?.[0] || "";
-
-            if (!tweetId) return;
-
-            // Extract text
-            const textElement = element.querySelector(
-              '[data-testid="tweetText"]',
-            );
-            const text = textElement?.textContent?.trim() || "";
-
-            if (!text) return;
-
-            // Extract author info
-            const authorElement = element.querySelector(
-              '[data-testid="User-Name"]',
-            );
-            const userLink = authorElement?.querySelector("a");
-            const username =
-              userLink?.getAttribute("href")?.replace(/^\//, "") || "";
-            const displayName =
-              authorElement?.querySelector("span")?.textContent || "";
-
-            // Extract verification badge
-            const verifiedBadge = element.querySelector(
-              '[data-testid="icon-verified"]',
-            );
-            const isVerified = !!verifiedBadge;
-
-            // Extract metrics
-            const getMetric = (testId: string): number => {
-              const metricEl = element.querySelector(
-                `[data-testid="${testId}"]`,
-              );
-              const text = metricEl?.textContent?.trim() || "0";
-              if (text.includes("K"))
-                return parseFloat(text.replace("K", "")) * 1000;
-              if (text.includes("M"))
-                return parseFloat(text.replace("M", "")) * 1000000;
-              return parseInt(text.replace(/[^0-9]/g, "")) || 0;
-            };
-
-            // Extract hashtags
-            const hashtagElements = element.querySelectorAll(
-              'a[href*="/hashtag/"]',
-            );
-            const hashtags: string[] = [];
-            hashtagElements.forEach((h) => {
-              const text = h?.textContent?.replace(/^#/, "") || "";
-              if (text) hashtags.push(text);
-            });
-
-            // Extract mentions
-            const mentionElements = element.querySelectorAll('a[href*="/"]');
-            const mentions: string[] = [];
-            mentionElements.forEach((m) => {
-              const text = m?.textContent || "";
-              if (text.startsWith("@")) mentions.push(text.replace(/^@/, ""));
-            });
-
-            // Extract time
-            const timeElement = element.querySelector("time");
-            const datetime =
-              timeElement?.getAttribute("datetime") || new Date().toISOString();
-
-            tweets.push({
-              id: tweetId,
-              text,
-              authorId: username,
-              authorUsername: username,
-              authorDisplayName: displayName,
-              authorFollowers: 0,
-              authorVerified: isVerified,
-              createdAt: datetime,
-              scrapedAt: new Date().toISOString(),
-              retweets: getMetric("retweet"),
-              likes: getMetric("like"),
-              replies: getMetric("reply"),
-              views: getMetric("view"),
-              language: "id",
-              source: "twitter",
-              hashtags,
-              mentions,
-              searchKeyword,
-            });
-          } catch (error) {
-            console.error("Error extracting tweet:", error);
-          }
-        });
-
-        return tweets;
-      }, keyword);
-    } catch (error) {
-      logger.error("Error in extractTweetsFromPage:", error);
-      return [];
-    }
-  }
-
-  /**
    * Build Twitter search URL
    */
   private buildSearchUrl(keyword: string): string {
     const query = encodeURIComponent(keyword);
-    return `https://x.com/search?q=${query}&src=typed_query&f=live&lang=id`;
+    return `https://twitter.com/search?q=${query}&src=typed_query&f=live&lang=id`;
   }
 
   /**

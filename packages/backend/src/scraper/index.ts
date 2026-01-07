@@ -156,6 +156,10 @@ export class ScraperOrchestrator {
       return { passed: false, saved: false };
     }
 
+    logger.info(`Processing tweet ${tweet.id}`);
+    logger.info(JSON.stringify(tweet, null, 2));
+    // return;
+
     // Save raw tweet
     const saved = await prisma.rawTweet.create({
       data: {

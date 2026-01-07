@@ -18,6 +18,9 @@ export interface Tweet {
   replies: number;
   language?: string;
   source?: string;
+  hashtags?: string[];
+  mentions?: string[];
+  elementIndex?: number;
 }
 
 export interface ScraperConfig {
@@ -44,7 +47,7 @@ export interface NLPConfig {
 // Sentiment Types
 // ========================================
 
-export type SentimentLabel = 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'MIXED';
+export type SentimentLabel = "POSITIVE" | "NEGATIVE" | "NEUTRAL" | "MIXED";
 
 export interface SentimentAnalysis {
   label: SentimentLabel;
@@ -141,7 +144,7 @@ export interface ScraperRunStatus {
   id: string;
   startTime: string;
   endTime?: string;
-  status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
+  status: "RUNNING" | "COMPLETED" | "FAILED" | "PARTIAL";
   tweetsFound: number;
   tweetsScraped: number;
   tweetsPassedDqm: number;
@@ -153,7 +156,7 @@ export interface ScraperRunStatus {
 // Scraper Types
 // ========================================
 
-export type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
+export type RunStatus = "RUNNING" | "COMPLETED" | "FAILED" | "PARTIAL";
 
 export interface ScraperRunResult {
   id: string;
