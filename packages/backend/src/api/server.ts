@@ -224,17 +224,28 @@ fastify.get('/api/tweets/sentiment/:sentiment', async (request, reply) => {
       take: limit,
     });
 
-    return tweets.map((t) => ({
-      id: t.id,
-      text: t.rawTweet.text,
-      cleanedText: t.cleanedText,
-      authorUsername: t.rawTweet.authorUsername,
-      authorDisplayName: t.rawTweet.authorDisplayName,
-      sentimentLabel: t.sentimentLabel,
-      sentimentScore: t.sentimentScore,
-      keywords: t.keywords,
-      createdAt: t.rawTweet.createdAt,
-    }));
+    const total = await prisma.processedTweet.count({
+      where: {
+        sentimentLabel: params.sentiment.toUpperCase() as any,
+      },
+    });
+
+    return {
+      tweets: tweets.map((t) => ({
+        id: t.id,
+        text: t.rawTweet.text,
+        cleanedText: t.cleanedText,
+        authorUsername: t.rawTweet.authorUsername,
+        authorDisplayName: t.rawTweet.authorDisplayName,
+        sentimentLabel: t.sentimentLabel,
+        sentimentScore: t.sentimentScore,
+        keywords: t.keywords,
+        createdAt: t.rawTweet.createdAt,
+      })),
+      total,
+      limit,
+      offset: 0,
+    };
   } catch (error) {
     logger.error('Error fetching tweets by sentiment:', error);
     reply.code(500).send({ error: 'Failed to fetch tweets' });
