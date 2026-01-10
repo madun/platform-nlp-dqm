@@ -84,7 +84,7 @@ export default function TweetsPage() {
 
                 <span
                   className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    sentimentColors[tweet.sentimentLabel]
+                    sentimentColors[tweet.sentimentLabel as SentimentLabel]
                   }`}
                 >
                   {tweet.sentimentLabel}

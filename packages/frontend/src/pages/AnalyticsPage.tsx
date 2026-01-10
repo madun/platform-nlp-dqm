@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getSentimentTrend, getTopKeywords } from '../services/api';
+import { getSentimentTrend, getTopKeywords, getDailyStats } from '../services/api';
 import {
   LineChart,
   Line,
@@ -13,18 +13,25 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
+import { usePlatform } from '../contexts/PlatformContext';
 
 export default function AnalyticsPage() {
+  const { platform } = usePlatform();
   const [days, setDays] = useState(7);
 
   const { data: trendData } = useQuery({
-    queryKey: ['sentiment-trend', days],
-    queryFn: () => getSentimentTrend(days),
+    queryKey: ['sentiment-trend', days, platform],
+    queryFn: () => getSentimentTrend(days, platform),
   });
 
   const { data: keywords } = useQuery({
     queryKey: ['top-keywords'],
     queryFn: () => getTopKeywords(30),
+  });
+
+  const { data: _stats } = useQuery({
+    queryKey: ['daily-stats', platform],
+    queryFn: () => getDailyStats(platform),
   });
 
   return (
@@ -33,7 +40,9 @@ export default function AnalyticsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
-          <p className="text-gray-500">Sentiment trends and insights</p>
+          <p className="text-gray-500">
+            Showing data for: {platform === 'all' ? 'All Platforms' : platform === 'twitter' ? 'Twitter/X' : 'YouTube'}
+          </p>
         </div>
 
         <select
