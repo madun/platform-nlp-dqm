@@ -16,7 +16,49 @@ export interface KeywordData {
 
 export class KeywordExtractor {
   /**
-   * Extract keywords from a processed tweet
+   * Extract keywords from text without database update
+   * Can be used for YouTube comments or any other text
+   */
+  extractFromText(normalizedText: string): KeywordData[] {
+    if (!normalizedText) {
+      return [];
+    }
+
+    const text = normalizedText;
+
+    // Tokenize and remove stopwords
+    const tokens = text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter((word) => word.length > 3);
+
+    const tokensWithoutStopwords = removeStopwords(tokens);
+
+    // Stem tokens
+    const stemmedTokens = tokensWithoutStopwords.map((t) => indonesianStemmer.stem(t));
+
+    // Count frequency
+    const frequency = new Map<string, number>();
+    for (const token of stemmedTokens) {
+      frequency.set(token, (frequency.get(token) || 0) + 1);
+    }
+
+    // Convert to array and sort by frequency
+    const keywords: KeywordData[] = Array.from(frequency.entries())
+      .map(([keyword, count]) => ({
+        keyword,
+        score: count / stemmedTokens.length, // TF score
+        count,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return keywords;
+  }
+
+  /**
+   * Extract keywords from a processed tweet (with database update)
    */
   async extractKeywords(processedTweet: ProcessedTweet): Promise<KeywordData[]> {
     const text = processedTweet.normalizedText;

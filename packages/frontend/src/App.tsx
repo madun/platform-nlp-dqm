@@ -1,8 +1,9 @@
-import { Activity, Home } from "lucide-react";
+import { Activity, Home, Youtube } from "lucide-react";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import Dashboard from "./pages/Dashboard";
 import TweetsPage from "./pages/TweetsPage";
+import YouTubeCommentsPage from "./pages/YouTubeCommentsPage";
 
 function App() {
   return (
@@ -36,9 +37,15 @@ function App() {
                   to="/tweets"
                   className="flex items-center space-x-2 px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
                 >
-                  {/*<QueryMetrics className="w-4 h-4" />*/}
-                  ICON METRIKS
+                  <Activity className="w-4 h-4" />
                   <span>Tweets</span>
+                </Link>
+                <Link
+                  to="/youtube-comments"
+                  className="flex items-center space-x-2 px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  <Youtube className="w-4 h-4 text-red-600" />
+                  <span>YouTube</span>
                 </Link>
                 <Link
                   to="/analytics"
@@ -57,6 +64,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/tweets" element={<TweetsPage />} />
+            <Route path="/youtube-comments" element={<YouTubeCommentsPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
           </Routes>
         </main>

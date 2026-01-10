@@ -32,7 +32,25 @@ export const positiveSentimentWords: Set<string> = new Set([
   // Additional positive words for context
   'sukses', 'berhasil', 'maju', 'positif', 'membaik', 'tumbuh',
   'sembuh', 'pulih', 'optimal', 'meningkat', 'berkembang', 'normal',
-  'ideal', 'kuat', 'aktif', 'kuat', 'berprestasi'
+  'ideal', 'kuat', 'aktif', 'berprestasi',
+
+  // Common Indonesian positive expressions (YouTube comments)
+  'keren', 'keren banget', 'mantap', 'mantap banget', 'top',
+  'oke', 'ok', 'sip', 'sippp', 'bravo', 'selamat', 'suwun',
+  'setuju', 'sangat setuju', 'mendukung', 'dukung', 'support',
+  'apresiasi', 'mengapresiasi', 'terima kasih', 'makasih', 'thanks',
+  'bangga', 'senang', 'gembira', 'happy', 'love', 'suka',
+  'harapan', 'optimis', 'percaya', 'yakin', 'pasti',
+  'semangat', 'terus', 'lanjut', 'juara', 'jago', 'paling',
+  'solusi', 'tepat', 'benar', 'bener', 'yasudah', 'yaudah', 'siap',
+
+  // Program-specific positive
+  'mbg', 'makan siang gratis', 'makan bergizi gratis', 'gratis',
+  'bantuan', 'bansos', 'subsidi', 'program bagus',
+
+  // Positive adjectives commonly used
+  'cantik', 'bagus banget', 'hebat banget', 'luar biasa',
+  'spesial', 'istimewa', 'terbaik', 'paling bagus', 'komplit',
 ]);
 
 /**
@@ -70,7 +88,57 @@ export const negativeSentimentWords: Set<string> = new Set([
 
   // Additional negative words for context
   'gagal', 'menurun', 'turun', 'krisis', 'parah', 'darurat', 'lemah',
-  'sakit', 'penyakit', 'masalah', 'kendala', 'minim', 'rendah'
+  'sakit', 'penyakit', 'masalah', 'kendala', 'minim', 'rendah',
+
+  // Common Indonesian negative expressions (YouTube comments)
+  'paksa', 'dipaksa', 'memaksa', 'terpaksa', 'korupsi', 'korupt',
+  'bodong', 'bohong', 'hoax', 'hoaks', 'fitnah', 'fitnah',
+  'omong kosong', 'ngomong kosong', 'kosong', 'omong doang',
+  'miskin', 'miskin banget', 'fakir', 'sengsara', 'susah',
+  'susah banget', 'sulit', 'sulit banget', 'ribet', 'rumit',
+  'lama', 'lama banget', 'lelet', 'lambat', 'ngelagap',
+  'benci', 'marah', 'kesal', 'kecewa', 'kecewa berat',
+  'nyesel', 'menyesal', 'sayang', 'sayang sekali',
+  'takut', 'takutan', 'khawatir', 'cemas', 'was-was',
+  'aneh', 'aneh banget', 'bikin ribut', 'rusak', 'hancur',
+  'parah', 'parah banget', 'berantakan', 'apokalipt',
+  'tidak jelas', 'membingungkan', 'ribet', 'berbelit',
+  'dustakan', 'bohong', 'palsu', 'palsu banget',
+  'buruk', 'jelek', 'jelek banget', 'ampas', 'sampah',
+  'tolol', 'bodoh', 'bego', 'idiot', 'stupid',
+  'bangsat', 'anjing', 'sialan', 'sial',
+  'najis', 'jorok', 'kotor', 'kumuh',
+  'merugi', 'rugi', 'habis', 'habis-habisan',
+  'malas', 'nggak ada', 'gada', 'kosong', 'nihil',
+  'penipu', 'penipuan', 'dusta', 'dustan',
+
+  // Negative reactions
+  'gak suka', 'tidak suka', 'benci', 'muak',
+  'gak setuju', 'tidak setuju', 'nggak setuju', 'anti',
+  'lawan', 'menentang', 'protes', 'demonstrasi',
+
+  // MBG-specific criticisms
+  'menggaet', 'gaet', 'suara', 'pencitraan', 'citra',
+  ' politik', 'gimmick', 'tipu', 'tipu daya',
+
+  // Indonesian political/program criticisms (common in YouTube)
+  'paksakan', 'dipaksakan', 'memaksa', 'terpaksa',
+  'program paksa', 'program dipaksakan',
+  'omong', 'ngomong', 'ngomongnya',
+  'janji', 'janji palsu', 'janji kosong',
+  'politik uang', 'uang', 'dagang', 'dagang elektabilitas',
+  'cari muka', 'pencitraan', 'citrawati', 'populis',
+  'terlalu', 'berlebihan', 'lebay',
+  'norak', 'ngeres', 'modal', 'modalin',
+
+  // More negative verbs/expressions
+  'menipu', 'membohongi', 'dustakan', 'dusta',
+  'palsu', 'palsukan', 'tidak benar', 'salah',
+  'keliru', 'menyesatkan', 'menyesat',
+
+  // Contextual program negatives
+  'gagal', 'batal', 'tidak jalan', 'macet',
+  'stuck', 'mandek', 'terhambat', 'terhenti',
 ]);
 
 /**

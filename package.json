@@ -14,6 +14,8 @@
     "frontend:build": "pnpm --filter frontend build",
     "shared:build": "pnpm --filter shared build",
     "scrape": "pnpm --filter backend scrape",
+    "scrape:youtube": "pnpm --filter backend scrape:youtube",
+    "scrape:all": "pnpm --filter backend scrape:all",
     "scrape:scheduled": "pnpm --filter backend scheduled",
     "prisma:generate": "pnpm --filter backend prisma:generate",
     "prisma:migrate": "pnpm --filter backend prisma:migrate",

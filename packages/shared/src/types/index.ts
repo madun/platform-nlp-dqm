@@ -91,15 +91,24 @@ export interface DQMResult {
 // ========================================
 
 export interface DailyStats {
-  date: string;
-  tweetsScraped: number;
-  tweetsPassedDqm: number;
-  tweetsAnalyzed: number;
+  date?: string;
+  platform?: Platform;
+  // Twitter fields
+  tweetsScraped?: number;
+  tweetsPassedDqm?: number;
+  tweetsAnalyzed?: number;
+  // YouTube fields
+  commentsCollected?: number;
+  commentsPassedDqm?: number;
+  commentsAnalyzed?: number;
+  // Sentiment fields (shared across platforms)
   sentimentPositive: number;
   sentimentNegative: number;
   sentimentNeutral: number;
   sentimentMixed: number;
   avgSentimentScore: number;
+  topKeywords?: KeywordData[];
+  topHashtags?: any[];
 }
 
 export interface SentimentDistribution {
@@ -168,4 +177,88 @@ export interface ScraperRunResult {
   tweetsPassedDqm: number;
   keywords: string[];
   errorMessage?: string;
+}
+
+// ========================================
+// Platform Types
+// ========================================
+
+export type Platform = "twitter" | "youtube" | "all";
+
+// ========================================
+// YouTube Types
+// ========================================
+
+export interface YouTubeComment {
+  id: string;
+  text: string;
+  cleanedText: string;
+  authorDisplayName: string;
+  authorChannelId: string;
+  authorProfileUrl?: string;
+  likeCount: number;
+  replyCount: number;
+  videoId: string;
+  videoTitle: string;
+  videoChannelId: string;
+  videoChannelTitle: string;
+  publishedAt: string;
+  sentimentLabel: SentimentLabel;
+  sentimentScore: number;
+  keywords?: KeywordData[];
+}
+
+export interface YouTubeVideo {
+  id: string;
+  title: string;
+  channelId: string;
+  channelTitle: string;
+  publishedAt: string;
+  categoryId: string;
+  duration: string;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+}
+
+export interface YouTubeCollectorConfig {
+  maxCommentsPerVideo?: number;
+  includeReplies?: boolean;
+}
+
+export interface YouTubeCollectorRunResult {
+  id: string;
+  startTime: Date;
+  endTime?: Date;
+  status: RunStatus;
+  commentsFound: number;
+  commentsCollected: number;
+  commentsPassedDqm: number;
+  videoIds: string[];
+  quotaUsed: number;
+  quotaRemaining?: number;
+  errorMessage?: string;
+}
+
+export interface WhitelistItem {
+  id: string;
+  targetType: "video" | "channel";
+  targetId: string;
+  title?: string;
+  isActive: boolean;
+  priority: number;
+  maxComments?: number;
+  lastCollectedAt?: Date;
+  totalComments: number;
+}
+
+// ========================================
+// Multi-Platform Stats Types
+// ========================================
+
+export interface MultiPlatformDailyStats {
+  date: string;
+  twitter: DailyStats;
+  youtube: DailyStats;
+  combined: DailyStats;
 }

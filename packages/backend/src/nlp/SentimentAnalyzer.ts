@@ -17,18 +17,21 @@ import {
   indonesianStemmer,
   indonesianStopwords,
   removeStopwords,
+  positiveSentimentWords,
+  negativeSentimentWords,
 } from '@memphis/shared';
 
 export class SentimentAnalyzer {
-  private readonly NEGATION_WORDS = ['tidak', 'bukan', 'tanpa', 'belum', 'jangan', 'nggak', 'enggak', 'tak'];
-  private readonly BOOSTER_WORDS = ['sangat', 'amat', 'terlalu', 'benar-benar', 'sungguh', 'sekali'];
+  private readonly NEGATION_WORDS = ['tidak', 'bukan', 'tanpa', 'belum', 'jangan', 'nggak', 'enggak', 'tak', 'gak', 'tak', 'jgn', 'g'];
+  private readonly BOOSTER_WORDS = ['sangat', 'amat', 'terlalu', 'benar-benar', 'sungguh', 'sekali', 'banget', 'bgt', 'parah', 'sekali'];
 
   /**
-   * Analyze sentiment of a processed tweet
+   * Analyze sentiment from text without database update
+   * Can be used for YouTube comments or any other text
    */
-  async analyzeTweet(processedTweet: ProcessedTweet): Promise<SentimentResult> {
-    const text = processedTweet.normalizedText;
-    const originalText = processedTweet.cleanedText;
+  analyzeText(cleanedText: string, normalizedText: string): SentimentResult {
+    const text = normalizedText;
+    const originalText = cleanedText;
 
     // Tokenize
     const tokens = this.tokenize(text);
@@ -49,12 +52,24 @@ export class SentimentAnalyzer {
       }
     }
 
-    // Check for multi-word phrases
+    // Check for multi-word phrases from the full lexicon
+    // This catches phrases like "omong kosong", "mbg", "paksakan", etc.
     const textLower = text.toLowerCase();
-    for (const phrase of ['sangat bagus', 'cukup baik', 'makan siang gratis', 'makan bergizi gratis']) {
-      if (textLower.includes(phrase)) {
-        if (getSentimentScore(phrase) > 0 && !positiveMatches.includes(phrase)) {
+
+    // Check positive multi-word phrases
+    for (const phrase of positiveSentimentWords) {
+      if (phrase.includes(' ') && textLower.includes(phrase)) {
+        if (!positiveMatches.includes(phrase)) {
           positiveMatches.push(phrase);
+        }
+      }
+    }
+
+    // Check negative multi-word phrases
+    for (const phrase of negativeSentimentWords) {
+      if (phrase.includes(' ') && textLower.includes(phrase)) {
+        if (!negativeMatches.includes(phrase)) {
+          negativeMatches.push(phrase);
         }
       }
     }
@@ -83,9 +98,9 @@ export class SentimentAnalyzer {
 
     // Determine label
     let label: SentimentLabel;
-    if (weightedScore > 1.5) {
+    if (weightedScore > 0.8) {  // Lowered from 1.5
       label = 'POSITIVE';
-    } else if (weightedScore < -1.5) {
+    } else if (weightedScore < -0.8) {  // Raised from -1.5
       label = 'NEGATIVE';
     } else if (positiveMatches.length > 0 && negativeMatches.length > 0) {
       label = 'MIXED';
@@ -100,7 +115,7 @@ export class SentimentAnalyzer {
     // Normalize score to -1 to 1 range
     const finalScore = Math.max(-1, Math.min(1, weightedScore / 3));
 
-    const result: SentimentResult = {
+    return {
       label,
       score: finalScore,
       confidence,
@@ -111,16 +126,24 @@ export class SentimentAnalyzer {
         weightedScore,
       },
     };
+  }
+
+  /**
+   * Analyze sentiment of a processed tweet (with database update)
+   */
+  async analyzeTweet(processedTweet: ProcessedTweet): Promise<SentimentResult> {
+    // Use the generic analyzeText method
+    const result = this.analyzeText(processedTweet.cleanedText, processedTweet.normalizedText);
 
     // Update ProcessedTweet with sentiment
     await prisma.processedTweet.update({
       where: { id: processedTweet.id },
       data: {
-        sentimentLabel: label,
-        sentimentScore: finalScore,
+        sentimentLabel: result.label,
+        sentimentScore: result.score,
         sentimentDetails: result.details as Prisma.InputJsonValue,
-        hasNutritionTerms: nutritionContext.length > 0,
-        hasPolicyTerms: extractProgramMentions(originalText).length > 0,
+        hasNutritionTerms: result.details.nutritionContext.length > 0,
+        hasPolicyTerms: extractProgramMentions(processedTweet.cleanedText).length > 0,
       },
     });
 
